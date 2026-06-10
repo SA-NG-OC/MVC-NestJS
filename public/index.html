@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Quản Lý Tủ Sách - NestJS API Client</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <h1>📚 Hệ Thống Quản Lý Tủ Sách (NestJS Client)</h1>
+
+    <div class="container">
+        <div>
+            <h2 id="form-title">Thêm Sách Mới</h2>
+            <form id="book-form">
+                <input type="hidden" id="book-id">
+
+                <div class="form-group">
+                    <label>Tiêu đề sách:</label>
+                    <input type="text" id="title" placeholder="Ví dụ: Đắc Nhân Tâm">
+                    <div class="error-msg" id="error-title"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tác giả:</label>
+                    <input type="text" id="author" placeholder="Ví dụ: Dale Carnegie">
+                    <div class="error-msg" id="error-author"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Giá ($):</label>
+                    <input type="number" id="price" placeholder="Ví dụ: 25">
+                    <div class="error-msg" id="error-price"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Năm xuất bản:</label>
+                    <input type="number" id="publishedYear" placeholder="Ví dụ: 1936">
+                    <div class="error-msg" id="error-publishedYear"></div>
+                </div>
+
+                <button type="submit" id="btn-submit">Thêm Vào Tủ Sách</button>
+                <button type="button" id="btn-cancel" class="btn-cancel" style="display: none;"
+                    onclick="resetForm()">Hủy Chỉnh Sửa</button>
+            </form>
+        </div>
+
+        <div>
+            <h2>Danh Sách Sách Hiện Có</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tiêu đề</th>
+                        <th>Tác giả</th>
+                        <th>Giá</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="book-table-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/book';
+
+        // Tự động load danh sách khi mở trang
+        document.addEventListener('DOMContentLoaded', fetchBooks);
+
+        // Lấy danh sách sách từ API
+        async function fetchBooks() {
+            const res = await fetch(API_URL);
+            const json = await res.json(); // TransformInterceptor bọc data trong json.data
+            const books = json.data || [];
+
+            const tbody = document.getElementById('book-table-body');
+            tbody.innerHTML = '';
+
+            if (books.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#95a5a6;">Tủ sách đang trống.</td></tr>`;
+                return;
+            }
+
+            books.forEach(book => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${book.title}</strong><br><small style="color:#7f8c8d">ID: ${book.id}</small></td>
+                        <td>${book.author}</td>
+                        <td>${book.price}$ (${book.publishedYear})</td>
+                        <td class="actions">
+                            <button class="btn-edit" onclick="editBook('${book.id}')">Sửa</button>
+                            <button class="btn-delete" onclick="deleteBook('${book.id}')">Xóa</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Xử lý Sự kiện Submit Form (Dùng chung cho cả Thêm và Cập nhật)
+        document.getElementById('book-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearErrors();
+
+            const id = document.getElementById('book-id').value;
+            const bodyData = {
+                title: document.getElementById('title').value,
+                author: document.getElementById('author').value,
+                price: Number(document.getElementById('price').value),
+                publishedYear: Number(document.getElementById('publishedYear').value)
+            };
+
+            let response;
+            if (id) {
+                // Nếu có ID -> Đang ở chế độ Sửa (PATCH)
+                response = await fetch(`${API_URL}/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bodyData)
+                });
+            } else {
+                // Không có ID -> Đang ở chế độ Thêm mới (POST)
+                response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bodyData)
+                });
+            }
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(id ? 'Cập nhật thành công!' : 'Thêm sách thành công!');
+                resetForm();
+                fetchBooks();
+            } else {
+                // Xử lý bắt lỗi Validation từ bộ lọc ExceptionFilter / Zod Pipe
+                if (result.error && result.error.message && result.error.message.errors) {
+                    const zodErrors = result.error.message.errors;
+                    showValidationErrors(zodErrors);
+                } else if (result.message && typeof result.message === 'string') {
+                    alert(result.message);
+                } else {
+                    alert('Đã xảy ra lỗi không hợp lệ.');
+                }
+            }
+        });
+
+        // Điền dữ liệu vào form để chuẩn bị cập nhật (Chế độ Edit)
+        async function editBook(id) {
+            const res = await fetch(`${API_URL}/${id}`);
+            const json = await res.json();
+            const book = json.data;
+
+            if (book) {
+                document.getElementById('book-id').value = book.id;
+                document.getElementById('title').value = book.title;
+                document.getElementById('author').value = book.author;
+                document.getElementById('price').value = book.price;
+                document.getElementById('publishedYear').value = book.publishedYear;
+
+                document.getElementById('form-title').innerText = "Chỉnh Sửa Thông Tin Sách";
+                document.getElementById('btn-submit').innerText = "Lưu Thay Đổi";
+                document.getElementById('btn-cancel').style.display = "block";
+            }
+        }
+
+        // Gọi API Xóa sách (DELETE)
+        async function deleteBook(id) {
+            if (confirm('Bạn chắc chắn muốn xóa cuốn sách này?')) {
+                const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    fetchBooks();
+                } else {
+                    alert('Không thể xóa sách.');
+                }
+            }
+        }
+
+        // Hiển thị lỗi Zod map với từng ô Input
+        function showValidationErrors(errors) {
+            for (const field in errors) {
+                const errDiv = document.getElementById(`error-${field}`);
+                if (errDiv && errors[field]._errors) {
+                    errDiv.innerText = errors[field]._errors[0];
+                    errDiv.style.display = 'block';
+                }
+            }
+        }
+
+        function clearErrors() {
+            document.querySelectorAll('.error-msg').forEach(el => {
+                el.innerText = '';
+                el.style.display = 'none';
+            });
+        }
+
+        function resetForm() {
+            document.getElementById('book-form').reset();
+            document.getElementById('book-id').value = '';
+            document.getElementById('form-title').innerText = "Thêm Sách Mới";
+            document.getElementById('btn-submit').innerText = "Thêm Vào Tủ Sách";
+            document.getElementById('btn-cancel').style.display = "none";
+            clearErrors();
+        }
+    </script>
+</body>
+
+</html>
